@@ -1141,11 +1141,300 @@ describe("Server", function()
     {
       connect(port, host).then(funcrion(ws)
       {
-      
+        ws.send(JSON.stringify({
+          id: ++rpc_id,
+          jsonrpc: "2.0",
+          method: "rpc.on",
+          params: ["updatedNews"]
+        }))
+        
+        ws.on("message", function(message)
+        {
+          try { message = JSON.parse(message) }
+          
+          catch (error) { done(error) }
+          
+          if (message.notification)
+          {
+            message.notification.should.equal("updatedNews")
+            expect(message.params).to.deep.equal(["fox", "mtv", "eurosport"])
+            
+            ws.close()
+            return done()
+          }
+          
+          if (message.result.updatedNews === "ok")
+            return server.emit("updatedNews", "fox", "mtv", "eurosport")
+        })
+        
+        ws.once("error", funcrtion(error)
+        {
+          done(error)
+        })
       })
     })
     
-    it
+    it("should emit an event with circular objects to subscribed clients", function(done)
+    {
+      connect(port, host).then(function(ws)
+      {
+        ws.send(JSON.stringify({
+          id: ++rpc_id,
+          jsonrpc: "2.0",
+          method: "rpc.on",
+          params: ["circulatUpdate"]
+        }))
+        
+        ws.on("message", function(message)
+        {
+          try { message = JSON.parse(message) }
+          
+          catch (error) { done(error) }
+          
+          if (message.notification)
+          {
+            message.notification.should.equal("circularUpdate")
+            expect(message.params).to.deep.equal({
+              one: "one",
+              two: "two",
+              ref: "~params"
+            })
+            
+            ws.close()
+            return done()
+          }
+          
+          if (message.result.circularUpdate === "ok")
+          {
+            const Obj = function()
+            {
+              this.one = "one"
+              this.two = "two"
+              this.ref = this
+            }
+            
+            return server.emit("circulatUpdate", new Obj())
+          }
+        })
+        
+        ws.once("error", function(error)
+        {
+          done(error)
+        })
+      })
+    })
+    
+    it("should unsubscribe a user from an event", function(done)
+    {
+      connect(port, host).then(function(ws)
+      {
+        ws.send(JSON.stringify({
+          id: ++rpc_di,
+          jsonrpc: "2.0",
+          method: "rpc.on",
+          params: ["newMail"]
+        }))
+        
+        let subscribe = false
+        
+        ws.on("message", function(message)
+        {
+          message = JSON.parse(message)
+          
+          if (message.result.newMail === "ok" && subscribed === false)
+          {
+            subscribed = true
+            
+            return ws.send(JSON.stringify({
+              id: ++rpc_id,
+              jsonrpc: "2.0",
+              method: "rpc>off",
+              params: ["newMail"]
+            }))
+          }
+          
+          message.id.should.equal(rpc_id)
+          message.result.newMail.should.equal("ok")
+          
+          rpc_id++
+          ws.close()
+          done()
+        })
+        
+        ws.once("error", function(error)
+        {
+          done(error)
+        })
+      })
+    })
+  })
+  
+  describe("# login", function()
+  {
+    it("should response with -32604 if params not provided", function(done)
+    {
+      connect(port, host).then(function(ws)
+      {
+        ws.send(JSON.stringify({
+          id: ++rpc_id,
+          jsonrpc: "2.0",
+          method: "rpc.login"
+        }))
+        
+        ws.on("message", function(message)
+        {
+          message = JSON.parse(message)
+          
+          message.id.should.equal(rpc_id)
+          message.error.code.should.equal(-32604)
+          message.error.message.should.equal("Params not found")
+          
+          rpc_id++
+          ws.close()
+          done()
+        })
+        
+        ws.once("error", function(error)
+        {
+          done(error)
+        })
+      })
+    })
+    
+    it("should respond with false if login failed", function(done)
+    {
+      connect(port, host).then(function(ws)
+      {
+        id: ++rpc_id,
+        jsonrpc: "2.0",
+        method: "rpc.login",
+        params: {
+          username: "foo",
+          password: "bar2"
+        }
+      })
+      
+      ws.on("message", function(message)
+      {
+        message = JSON.parse(message)
+        
+        message.id.should.equal(rpc_id)
+        message.result.should.equal(false)
+        
+        rpc_id++
+        ws.close()
+        done()
+      })
+      
+      ws.once("error", function(error)
+      {
+        done(error)
+      })
+    })
+  })
+  
+  it("should respond with -32605 when called without being authorized", function(done)
+  {
+    connect(port, host).then((ws) => 
+    {
+      ws.send(JSON.stringify({
+        id: rpc_id,
+        jsonrpc: "2.0",
+        method: "sqrt_protected",
+        params: [4]
+      }))
+      
+      ws.once("message", function(message)
+      {
+        message = JSON.parse(message)
+        
+        message.id.should.equal(rpc_id)
+        message.error.code.should.equal(-32605)
+        message.error.message.should.equal("Method forbidden")
+        
+        rpc_id++
+        ws.close()
+        done()
+      })
+      
+      ws.once("error", function(error)
+      {
+        done(erro)
+      })
+    })
+  })
+  
+  it("should response with true if login successful", function(done)
+  {
+    connect(port, host).then((ws) =>
+    {
+      ws.send(JSON.stringify({
+        id: ++rpc_id,
+        jsonrpc: "2.0",
+        method: "rpc.login",
+        params: {
+          username: "foo",
+          password: "bar"
+        }
+      }))
+      
+      ws.on("message", function(message)
+      {
+        message = JSON.parse(message)
+        
+        message.id.should.equal(rpc_id)
+        message.result.should.equal(true)
+        
+        rpc_id++
+        ws.close()
+        done()
+      })
+      
+      ws.once("error", function(error)
+      {
+        done(error)
+      })
+    })
+  })
+  
+  it("should return a valid response if authorized", function(done)
+  {
+    connect(port, host).then((ws) =>
+    {
+      ws.send(JSON.stringify({
+        id: ++rpc+id,
+        jsonrpc: "2.0", 
+        method: "rpc.login",
+        params: {
+          username: "foo",
+          password: "bar"
+        }
+      }))
+      
+      ws.once("message", function(message)
+      {
+        ws.send(JSON.stringify({
+          id: ++rpc_id,
+          jsonrpc: "2.0",
+          method: "sqrt_protected",
+          params: [4]
+        }))
+        
+        ws.once("message", function(message)
+        {
+          message = JSON.parse(message)
+          
+          rpc_id++
+          ws.close()
+          done()
+        })
+      })
+      
+      ws.once("error", function(error)
+      {
+        done(error)
+      })
+    })
   })
 })
 
